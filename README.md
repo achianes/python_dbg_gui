@@ -75,7 +75,7 @@ The application also includes an integration with Ollama for AI assistance durin
 If you wish to use the AI integration:
 
 1.  Ensure you have [Ollama](https://ollama.com/) installed and running.
-2.  Pull the models you want to use (e.g., `ollama pull llama3.1`).
+2.  Pull the models you want to use (e.g., `ollama pull llama3.2`).
 3.  In the Python DBG GUI application, go to `File > Configure Ollama...`.
 4.  Enter your Ollama server URL (usually `http://localhost:11434`) and select a default model from the list.
 
