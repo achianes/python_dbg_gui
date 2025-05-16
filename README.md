@@ -64,10 +64,6 @@ The application also includes an integration with Ollama for AI assistance durin
     ```bash
     pip install -r requirements.txt
     ```
-    If you want the full optional features (HTML AI chat and SVG icons), ensure the related libraries are in `requirements.txt` or install them separately:
-    ```bash
-    pip install tkinterweb requests cairosvg Pillow screeninfo
-    ```
 
 4.  **Run the application:**
     ```bash
