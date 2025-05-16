@@ -6,6 +6,9 @@ Python DBG GUI is a graphical user interface (GUI) for the Python debugger, desi
 
 The application also includes an integration with Ollama for AI assistance during coding and debugging.
 
+![image](https://github.com/user-attachments/assets/a7a65274-e2ce-426c-a1cc-d67d7b5c02b3)
+
+
 ## Key Features
 
 *   **Integrated Code Editor:**
