@@ -109,6 +109,7 @@ Contributions are welcome! If you have suggestions, bug reports, or want to cont
 
 This project is distributed under the MIT License. See the `LICENSE` file for more details (if you add one).
 
+[![Support me on PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=T4SKREGYTG5ES)
 ---
 
 *This README was generated as a draft. Feel free to modify and improve it!*
