@@ -12,11 +12,14 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Body, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 from .controller import DebugController
+from .engines.chat_engine import ChatEngine
 from .project import Project, ProjectError
 from .ws_protocol import Cmd, Evt, Message
 
@@ -30,10 +33,36 @@ def create_app(root: str | Path | None = None) -> FastAPI:
     app = FastAPI(title="nlpilot-ide", version="0.1.0")
     root = root or os.environ.get("NLPILOT_IDE_ROOT") or Path.cwd()
     project = Project(root)
+    # One chat engine for the whole app (not per WebSocket) so the conversation
+    # SURVIVES a page reload or a dropped/reconnected socket — the history lives here.
+    chat = ChatEngine(project)
 
     @app.get("/api/health")
     async def health() -> JSONResponse:
         return JSONResponse({"ok": True, "web_dist": _WEB_DIST.exists()})
+
+    # ---- UI layout persistence (panel visibility + split sizes) ----
+    # Stored server-side so it survives even when the desktop webview does not keep
+    # localStorage across sessions. One global file per user.
+    _layout_file = Path.home() / ".nlpilot_ide" / "layout.json"
+
+    @app.get("/api/layout")
+    async def get_layout() -> JSONResponse:
+        try:
+            import json as _json
+            return JSONResponse(_json.loads(_layout_file.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001 — no saved layout yet
+            return JSONResponse({})
+
+    @app.put("/api/layout")
+    async def put_layout(layout: dict = Body(...)) -> JSONResponse:
+        try:
+            import json as _json
+            _layout_file.parent.mkdir(parents=True, exist_ok=True)
+            _layout_file.write_text(_json.dumps(layout), encoding="utf-8")
+            return JSONResponse({"ok": True})
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
     # ---- project / file API ----
     @app.get("/api/root")
@@ -77,6 +106,21 @@ def create_app(root: str | Path | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         return JSONResponse({"ok": True, "path": path})
 
+    @app.post("/api/upload")
+    async def upload(file: UploadFile = File(...)) -> JSONResponse:
+        # Save a chat attachment (requirement doc or UI screenshot) under the project's
+        # hidden scratch dir; the returned path is passed back in a chat.send payload.
+        data = await file.read()
+        if len(data) > 20_000_000:
+            raise HTTPException(status_code=400, detail="file too large (>20MB)")
+        try:
+            rel = project.save_upload(file.filename or "file", data)
+        except ProjectError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        ext = (file.filename or "").lower().rsplit(".", 1)[-1]
+        kind = "image" if ext in {"png", "jpg", "jpeg", "gif", "webp", "bmp"} else "doc"
+        return JSONResponse({"path": rel, "kind": kind, "name": file.filename})
+
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket) -> None:
         await ws.accept()
@@ -107,6 +151,30 @@ def create_app(root: str | Path | None = None) -> FastAPI:
                     except Exception as e:  # noqa: BLE001
                         await ws.send_json(
                             Message(Evt.ERROR, {"reason": f"generate failed: {e}"}).to_dict()
+                        )
+                    continue
+                # AI chat is slow (LLM + optional vision) — run off the event loop.
+                if msg.type == Cmd.CHAT_RESET:
+                    chat.reset()
+                    continue
+                if msg.type == Cmd.CHAT_STOP:
+                    chat.cancel()  # abort the running generation (streamed)
+                    continue
+                if msg.type == Cmd.CHAT_SEND:
+                    await ws.send_json(Message(Evt.CHAT_START, {}).to_dict())
+                    try:
+                        result = await asyncio.to_thread(
+                            chat.send,
+                            msg.payload.get("text", ""),
+                            msg.payload.get("attachments", []),
+                            msg.payload.get("editor"),
+                            msg.payload.get("runError"),
+                            bool(msg.payload.get("web")),
+                        )
+                        await ws.send_json(Message(Evt.CHAT_DONE, result).to_dict())
+                    except Exception as e:  # noqa: BLE001
+                        await ws.send_json(
+                            Message(Evt.CHAT_ERROR, {"error": str(e)}).to_dict()
                         )
                     continue
                 reply = controller.handle(msg)

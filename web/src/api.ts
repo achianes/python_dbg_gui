@@ -36,4 +36,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path, content }),
     }).then(json<{ ok: boolean; path: string }>),
+  getLayout: () => fetch("/api/layout").then(json<Record<string, string>>),
+  saveLayout: (layout: Record<string, string>) =>
+    fetch("/api/layout", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(layout),
+    }).then(json<{ ok: boolean }>),
+  upload: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch("/api/upload", { method: "POST", body: fd }).then(
+      json<{ path: string; kind: string; name: string }>
+    );
+  },
 };

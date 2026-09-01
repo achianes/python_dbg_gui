@@ -5,7 +5,7 @@ import * as Blockly from "blockly";
 import { registerMultilineField } from "./multilineField";
 
 export const BACKENDS = [
-  "web", "windows", "linux", "android", "vision",
+  "none", "web", "windows", "linux", "android", "vision",
   "ssh", "bash", "powershell", "http", "db", "capture", "redrat",
 ];
 
@@ -557,14 +557,15 @@ function parseLine(line: string): BlockJson | null {
   if ((m = l.match(/^INCLUDE\s+(.+)$/i))) return { type: "nlt_include", fields: { PATH: m[1].trim() } };
   if ((m = l.match(/^#\s?(.*)$/))) return { type: "nlt_comment", fields: { TEXT: m[1] } };
   if ((m = l.match(/^Go to (.+)$/i))) return { type: "nlt_goto", fields: { URL: m[1] } };
-  if ((m = l.match(/^Wait (\d+(?:\.\d+)?) seconds?$/i)))
+  if ((m = l.match(/^Wait (?:for )?(\d+(?:\.\d+)?) seconds?$/i)))
     return { type: "nlt_wait", fields: { SECS: Number(m[1]) } };
   if ((m = l.match(/^Type "(.+)" into (.+?)( and press enter)?$/i)))
     return { type: "nlt_type", fields: { TEXT: m[1], FIELD: m[2], ENTER: m[3] ? "TRUE" : "FALSE" } };
   if ((m = l.match(/^Click the element matching (.+)$/i))) return { type: "nlt_click_image", fields: { REF: m[1] } };
   if ((m = l.match(/^Click (.+)$/i))) return { type: "nlt_click", fields: { TARGET: m[1] } };
   if ((m = l.match(/^Print "(.+)"$/i))) return { type: "nlt_print", fields: { TEXT: m[1] } };
-  if ((m = l.match(/^Scroll (up|down|top|bottom)$/i))) return { type: "nlt_scroll", fields: { DIR: m[1].toLowerCase() } };
+  if ((m = l.match(/^Print (.+)$/i))) return { type: "nlt_print", fields: { TEXT: m[1].replace(/^["']|["']$/g, "") } };
+  if ((m = l.match(/^Scroll(?: (?:to|towards|down to|up to))?(?: the)? (up|down|top|bottom)$/i))) return { type: "nlt_scroll", fields: { DIR: m[1].toLowerCase() } };
   if ((m = l.match(/^Swipe (up|down|left|right)$/i))) return { type: "nlt_swipe", fields: { DIR: m[1].toLowerCase() } };
   if ((m = l.match(/^Press the (back|home|enter|recent) key$/i))) return { type: "nlt_key", fields: { KEY: m[1].toLowerCase() } };
   if ((m = l.match(/^GET (.+)$/))) return { type: "nlt_http_get", fields: { URL: m[1] } };
@@ -580,7 +581,7 @@ function parseLine(line: string): BlockJson | null {
     return { type: "nlt_app_start", fields: { PKG: m[1] } };
   if ((m = l.match(/^Unlock the phone(?: with the PIN (.+))?$/i)))
     return { type: "nlt_unlock", fields: { PIN: m[1] ?? "" } };
-  if ((m = l.match(/^Save the text "(.+)" to the file "(.+)"$/i)))
+  if ((m = l.match(/^Save (?:the text )?"(.+)" to (?:the file )?"(.+)"$/i)))
     return { type: "nlt_save", fields: { TEXT: m[1], FILE: m[2] } };
   if ((m = l.match(/^EXPECT that the template "(.+)" is visible/i)))
     return { type: "nlt_match", fields: { FILE: m[1] } };
@@ -669,6 +670,20 @@ function parseChain(lines: string[], i: number, base: number): { items: BlockJso
       const block: BlockJson = { type: "nlt_repeat_until", fields: { COND: m[1] } };
       const j = chainToJson(r.items); if (j) block.inputs = { DO: { block: j } };
       items.push(block);
+      continue;
+    }
+    // `While <cond>:` — same loop as repeat-until (the compiler makes a real while).
+    if ((m = t.match(/^While (.+):$/i))) {
+      i++; const r = parseChain(lines, i, base + 2); i = r.next;
+      const block: BlockJson = { type: "nlt_repeat_until", fields: { COND: m[1] } };
+      const j = chainToJson(r.items); if (j) block.inputs = { DO: { block: j } };
+      items.push(block);
+      continue;
+    }
+    if (!t.endsWith(":") && (m = t.match(/^While\s+(.+?)\s*[,:]\s*(.+)$/i))) {
+      const block: BlockJson = { type: "nlt_repeat_until", fields: { COND: m[1].trim() } };
+      const j = chainToJson(splitInlineBody(m[2])); if (j) block.inputs = { DO: { block: j } };
+      items.push(block); i++;
       continue;
     }
     // inline loops: "Repeat/Loop N times[,:] <body>", "Repeat until <cond>[,:] <body>"

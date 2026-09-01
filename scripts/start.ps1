@@ -22,7 +22,9 @@ param(
   [string]$OllamaUrl      = "http://172.24.172.155:11434",
   [string]$Model          = "qwen3-coder:30b",   # generation (model_for_instructions)
   [string]$ResponsesModel = "qwen3-coder:30b",   # verify / self-correction (model_for_responses)
-  [string]$VisionModel    = "qwen3-vl:30b",      # @vision backend
+  [string]$VisionModel    = "qwen3-vl:8b",       # @vision / chat image analysis — the 8b
+                                                 # fits beside the 30b coder in VRAM; the
+                                                 # 30b vision model does not (both ~30B).
   [string]$Root,                     # IDE project root; default = repo root
   [int]$Port         = 8760,
   [switch]$Desktop,                  # open the pywebview window instead of browser mode
@@ -160,13 +162,21 @@ if ($Build -or -not (Test-Path $dist) -or $stale) {
 # 4. Launch
 # ---------------------------------------------------------------------------
 Push-Location $RepoRoot
+# Persist server output to a log file so a crash/freeze is diagnosable afterwards
+# (the window may be hidden and its console is lost when the process dies). The
+# previous run's log is rotated to *.prev.log so you always have the last two.
+$logDir = Join-Path $env:TEMP "nlpilot-ide"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$log = Join-Path $logDir "server.log"
+if (Test-Path $log) { Move-Item -Force $log (Join-Path $logDir "server.prev.log") }
+Info "Logging server output to $log"
 try {
   if ($Desktop) {
     Info "Launching desktop app (pywebview) ..."
-    python -m nlpilot_ide.desktop.main
+    python -m nlpilot_ide.desktop.main 2>&1 | Tee-Object -FilePath $log
   } else {
     $url = "http://127.0.0.1:$Port"
     Ok "Starting server - open $url in your browser (Ctrl+C to stop)."
-    python -m uvicorn nlpilot_ide.server.app:app --host 127.0.0.1 --port $Port
+    python -m uvicorn nlpilot_ide.server.app:app --host 127.0.0.1 --port $Port 2>&1 | Tee-Object -FilePath $log
   }
 } finally { Pop-Location }

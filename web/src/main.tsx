@@ -10,6 +10,7 @@ import "monaco-editor/esm/vs/basic-languages/shell/shell.contribution";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { App } from "./App";
+import { loadLayout } from "./layout";
 import { useStore } from "./state/store";
 import { genLineToSource, genLineToSourceSpan, sourceToGen, useDebug } from "./state/debug";
 import "./styles.css";
@@ -25,8 +26,12 @@ import * as blocks from "./blocks/nltBlocks";
 import * as BlocklyNS from "blockly";
 (window as any).__ide = { store: useStore, debug: useDebug, monaco, genLineToSource, genLineToSourceSpan, sourceToGen, blocks, Blockly: BlocklyNS };
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+// Hydrate the saved panel layout from the server BEFORE mounting, so the toggle
+// and split-size state initializers read the persisted values.
+loadLayout().finally(() => {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+});

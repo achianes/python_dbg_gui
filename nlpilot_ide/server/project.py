@@ -100,3 +100,21 @@ class Project:
         p = self._resolve(rel)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8", newline="")
+
+    def abspath(self, rel: str) -> str:
+        """Absolute path of a project-relative file (path-traversal guarded)."""
+        return str(self._resolve(rel))
+
+    def save_upload(self, filename: str, data: bytes) -> str:
+        """Save an uploaded attachment under the hidden `.nlpilot_chat/` scratch dir
+        (ignored by the tree) and return its project-relative POSIX path."""
+        import re
+        import time
+
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (filename or "file")).strip("_") or "file"
+        stamp = int(time.time() * 1000)
+        rel = f".nlpilot_chat/{stamp}_{safe}"
+        p = self._resolve(rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+        return rel

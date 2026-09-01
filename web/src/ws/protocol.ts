@@ -21,6 +21,9 @@ export const Cmd = {
   NLT_UI_CLICK: "nlt.uiClick",
   NLT_UI_SCROLL: "nlt.uiScroll",
   NLT_UI_TYPE: "nlt.uiType",
+  CHAT_SEND: "chat.send",
+  CHAT_RESET: "chat.reset",
+  CHAT_STOP: "chat.stop",
 } as const;
 
 export const Evt = {
@@ -49,6 +52,10 @@ export const Evt = {
   NLT_RUN_END: "nlt.runEnd",
   NLT_FRAME: "nlt.frame",
   NLT_SCREENSHOT: "nlt.screenshot",
+  CHAT_START: "chat.start",
+  CHAT_DELTA: "chat.delta",
+  CHAT_DONE: "chat.done",
+  CHAT_ERROR: "chat.error",
 } as const;
 
 export interface Frame { file: string; line: number; name: string; }

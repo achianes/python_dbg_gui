@@ -6,8 +6,10 @@ Falls back to a clear message if the frontend isn't built yet.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
+from pathlib import Path
 from urllib.request import urlopen
 
 import uvicorn
@@ -16,6 +18,26 @@ import webview
 from ..server.run import HOST, PORT
 
 _URL = f"http://{HOST}:{PORT}"
+
+# Persisted window geometry (size + position + maximized), so the desktop window
+# reopens where the user left it.
+_WIN_FILE = Path.home() / ".nlpilot_ide" / "window.json"
+
+
+def _load_geometry() -> dict:
+    try:
+        g = json.loads(_WIN_FILE.read_text(encoding="utf-8"))
+        return g if isinstance(g, dict) else {}
+    except Exception:  # noqa: BLE001 — first run / no file
+        return {}
+
+
+def _save_geometry(g: dict) -> None:
+    try:
+        _WIN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _WIN_FILE.write_text(json.dumps(g), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _serve() -> None:
@@ -73,12 +95,64 @@ def main() -> None:
     if not _wait_for_server():
         raise RuntimeError("backend did not start in time")
     api = _Api()
+    geo = _load_geometry()
+    kwargs = dict(width=int(geo.get("width", 1400)), height=int(geo.get("height", 900)))
+    if geo.get("x") is not None and geo.get("y") is not None:
+        kwargs["x"], kwargs["y"] = int(geo["x"]), int(geo["y"])
+    if geo.get("maximized"):
+        kwargs["maximized"] = True
     window = webview.create_window(
-        "nlpilot-ide", _URL, width=1400, height=900, js_api=api,
+        "nlpilot-ide", _URL, js_api=api,
         text_select=True,  # allow selecting/copying console output etc.
+        **kwargs,
     )
     api._window = window
+
+    # Track live geometry via events and persist it when the window closes.
+    state = {
+        "width": kwargs["width"], "height": kwargs["height"],
+        "x": geo.get("x"), "y": geo.get("y"), "maximized": bool(geo.get("maximized")),
+    }
+
+    def _on_resized(*a):
+        if len(a) >= 2:
+            try:
+                state["width"], state["height"] = int(a[0]), int(a[1])
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_moved(*a):
+        if len(a) >= 2:
+            try:
+                state["x"], state["y"] = int(a[0]), int(a[1])
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_maximized(*a):
+        state["maximized"] = True
+
+    def _on_restored(*a):
+        state["maximized"] = False
+
+    def _on_closing(*a):
+        _save_geometry(state)
+
+    # Event names vary across pywebview versions/backends — bind defensively.
+    # pywebview Event objects append handlers via `+= handler`.
+    for ev, cb in (
+        ("resized", _on_resized), ("moved", _on_moved),
+        ("maximized", _on_maximized), ("restored", _on_restored),
+        ("closing", _on_closing), ("closed", _on_closing),
+    ):
+        try:
+            evt = getattr(window.events, ev)
+            evt += cb
+        except Exception:  # noqa: BLE001 — this pywebview build lacks the event
+            pass
+
     webview.start()
+    # Belt-and-suspenders: also save after the event loop returns.
+    _save_geometry(state)
 
 
 if __name__ == "__main__":

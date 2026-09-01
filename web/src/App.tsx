@@ -14,6 +14,9 @@ import { BusyOverlay } from "./components/BusyOverlay";
 import { StatusBar } from "./components/StatusBar";
 import { DragBar, useSplitSize } from "./components/Split";
 import { BlocksView } from "./components/BlocksView";
+import { ChatPanel } from "./components/ChatPanel";
+import { useChat } from "./state/chat";
+import { saveLayout } from "./layout";
 
 export function App() {
   const [connected, setConnected] = useState(false);
@@ -22,8 +25,21 @@ export function App() {
   const active = useStore((s) => s.active);
   const save = useStore((s) => s.save);
   const ingest = useDebug((s) => s.ingest);
+  const chatIngest = useChat((s) => s.ingest);
   const nlt = useDebug((s) => s.nlt);
   const showGen = !!nlt.generated;
+
+  const [showChat, setShowChat] = useState(
+    () => localStorage.getItem("ide:chat") === "1");
+  useEffect(() => localStorage.setItem("ide:chat", showChat ? "1" : "0"), [showChat]);
+
+  // Collapsible left explorer + right debug column (default visible).
+  const [showTree, setShowTree] = useState(
+    () => localStorage.getItem("ide:tree") !== "0");
+  useEffect(() => localStorage.setItem("ide:tree", showTree ? "1" : "0"), [showTree]);
+  const [showDebug, setShowDebug] = useState(
+    () => localStorage.getItem("ide:debug") !== "0");
+  useEffect(() => localStorage.setItem("ide:debug", showDebug ? "1" : "0"), [showDebug]);
 
   // Code editor or Scratch-style visual composer.
   const [mode, setMode] = useState<"code" | "blocks">(
@@ -35,22 +51,37 @@ export function App() {
   const [genW, setGenW] = useSplitSize("gen", 520);
   const [consoleH, setConsoleH] = useSplitSize("console", 180);
   const [dbgW, setDbgW] = useSplitSize("dbg", 280);
+  const [chatW, setChatW] = useSplitSize("chat", 360);
+
+  // Persist the whole panel layout to the server whenever any of it changes, so it
+  // survives closing the IDE even if the desktop webview drops localStorage.
+  useEffect(() => {
+    saveLayout();
+  }, [mode, showChat, showTree, showDebug, sidebarW, genW, consoleH, dbgW, chatW]);
 
   useEffect(() => {
     const off = ws.on((msg: Message) => {
       if (msg.type === Evt.HELLO) setConnected(true);
       ingest(msg);
+      chatIngest(msg);
     });
     ws.connect();
     loadTree().catch((e) => console.error("tree load failed", e));
     return off;
-  }, [loadTree, ingest]);
+  }, [loadTree, ingest, chatIngest]);
 
   return (
     <div className="app">
       <div className="topbar">
         <h1>nlpilot-ide</h1>
         <span className="root" title={root}>{root}</span>
+        <button
+          className={`mode-btn ${showTree ? "on" : ""}`}
+          title="Toggle the file explorer"
+          onClick={() => setShowTree((v) => !v)}
+        >
+          🗂 Explorer
+        </button>
         <button
           className={`mode-btn ${mode === "blocks" ? "on" : ""}`}
           title="Toggle the Scratch-style visual composer"
@@ -60,12 +91,27 @@ export function App() {
         </button>
         <DebugToolbar />
         <div className="spacer" />
+        <button
+          className={`mode-btn ${showDebug ? "on" : ""}`}
+          title="Toggle the debug column (Variables / Call Stack)"
+          onClick={() => setShowDebug((v) => !v)}
+        >
+          🐞 Debug
+        </button>
+        <button
+          className={`mode-btn ${showChat ? "on" : ""}`}
+          title="AI chat — describe a task, get a .nlt script"
+          onClick={() => setShowChat((v) => !v)}
+        >
+          💬 AI Chat
+        </button>
         <button onClick={() => active && save(active)} disabled={!active}>Save</button>
         <span className={`status ${connected ? "ok" : "err"}`}>
           {connected ? "● live" : "○ offline"}
         </span>
       </div>
       <div className="main">
+        {showTree && (
         <aside className="sidebar" style={{ width: sidebarW }}>
           <div className="sidebar-head">
             <span>EXPLORER</span>
@@ -127,7 +173,10 @@ export function App() {
           </div>
           <FileTree />
         </aside>
-        <DragBar dir="v" size={sidebarW} setSize={setSidebarW} min={140} max={600} />
+        )}
+        {showTree && (
+          <DragBar dir="v" size={sidebarW} setSize={setSidebarW} min={140} max={600} />
+        )}
         <section className="editor-area">
           <Tabs />
           {nlt.stale && (
@@ -160,8 +209,18 @@ export function App() {
             <Console />
           </div>
         </section>
-        <DragBar dir="v" size={dbgW} setSize={setDbgW} invert min={160} max={700} />
-        <DebugSidebar width={dbgW} />
+        {showChat && (
+          <>
+            <DragBar dir="v" size={chatW} setSize={setChatW} invert min={260} max={700} />
+            <ChatPanel width={chatW} />
+          </>
+        )}
+        {showDebug && (
+          <>
+            <DragBar dir="v" size={dbgW} setSize={setDbgW} invert min={160} max={700} />
+            <DebugSidebar width={dbgW} />
+          </>
+        )}
       </div>
       {nlt.status === "generating" && (
         <BusyOverlay

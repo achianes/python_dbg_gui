@@ -34,6 +34,10 @@ class Cmd:
     NLT_UI_CLICK = "nlt.uiClick"       # {x, y}  screenshot-pixel coords (paused only)
     NLT_UI_SCROLL = "nlt.uiScroll"     # {dx, dy}
     NLT_UI_TYPE = "nlt.uiType"         # {text}
+    # --- AI chat: generate .nlt from a conversation (Phase 6) ---
+    CHAT_SEND = "chat.send"    # {text, attachments:[{path, kind}], reset?:bool}
+    CHAT_RESET = "chat.reset"  # {}  clear the conversation history
+    CHAT_STOP = "chat.stop"    # {}  abort the in-flight generation
 
 
 # ---- events: server -> client ----
@@ -65,6 +69,11 @@ class Evt:
     NLT_RUN_END = "nlt.runEnd"         # {}
     NLT_FRAME = "nlt.frame"            # {jpeg}  — b64 JPEG of the frozen capture frame
     NLT_SCREENSHOT = "nlt.screenshot"  # {name, mime, b64} — any env.screenshot(...)
+    # --- AI chat (Phase 6) ---
+    CHAT_START = "chat.start"    # {}  assistant turn begins
+    CHAT_DELTA = "chat.delta"    # {text}  streamed assistant text chunk
+    CHAT_DONE = "chat.done"      # {reply, nlt}  full reply + extracted .nlt script (or "")
+    CHAT_ERROR = "chat.error"    # {error}
 
 
 @dataclass
